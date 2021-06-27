@@ -1,0 +1,689 @@
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+
+#include <malloc.h>
+#include <math.h>
+#include<dirent.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
+
+#include <png.h>
+
+#include <dlfcn.h>
+#include <zlib.h>
+
+#define WIDTH   1440
+#define HEIGHT  720
+unsigned char image[HEIGHT][WIDTH];
+int maxx = 0;
+int maxy = 0;
+
+//////////////////////////////////////////////////
+
+void* hfreetype;
+void* hlibpng;
+void* hzlib;
+struct name_of_files
+{
+	char list_of_files[100][100];
+	int rows;
+};
+const char* path;
+struct name_of_files files;
+int get_files_names(void)
+{
+    struct dirent *de;  // Pointer for directory entry
+
+    // opendir() returns a pointer of DIR type.
+    DIR *dr = opendir(".");
+
+    if (dr == NULL)  // opendir returns NULL if couldn't open directory
+    {
+        printf("Could not open current directory" );
+        return 0;
+    }
+
+
+    int i=0;
+    while ((de = readdir(dr)) != NULL)
+	{
+	   if( (!strcmp(de->d_name,"."))  )
+	   {
+		continue;
+	   }
+	   if( (!strcmp(de->d_name,"..")) )
+	   {
+		continue;
+	   }
+	   	sprintf(files.list_of_files[i++],"%s",de->d_name);
+	}
+	//printf("%d\n",i);
+	files.rows=i;
+    int j=0;
+    //for(j=0;j<i;j++)
+	 //printf("%s\n",files.list_of_files[j]);
+
+    closedir(dr);
+    return 0;
+}
+void draw_bitmap( FT_Bitmap*  bitmap, FT_Int x, FT_Int y)
+{
+  FT_Int  i, j, p, q;
+  FT_Int  x_max = x + bitmap->width;
+  FT_Int  y_max = y + bitmap->rows;
+  for ( i = x, p = 0; i < x_max; i++, p++ )
+  {
+    for ( j = y, q = 0; j < y_max; j++, q++ )
+    {
+      if ( i < 0      || j < 0       ||
+           i >= WIDTH || j >= HEIGHT )
+        continue;
+      image[j][i] |= bitmap->buffer[q * bitmap->width + p];
+    }
+  }
+}
+
+
+typedef struct
+{
+	char* font_file;
+	char* name_png;
+	char* text;
+	int size;
+	int anti_alias;
+} conf_t;
+
+
+char* parse_args(int argc, char** argv, conf_t* conf)
+{
+	get_files_names();
+	memset(conf, 0, sizeof(conf_t));
+	//conf->size = 72;
+	if (argc == 1)
+	{
+        //conf->font_file="../*.ttf";
+        char buf[500]="\0";
+        int k=0;
+        for(k=0;k<files.rows;k++)
+        {
+            if(strstr(files.list_of_files[k],".ttf"))
+            {
+                //strcat(buf,"../");
+                strcat(buf,files.list_of_files[k]);
+            }
+        }
+        conf->font_file=(char*)calloc(strlen(buf)+1,sizeof(char));
+        memcpy(conf->font_file,buf,(strlen(buf)+1)*sizeof(char));
+        conf->name_png="default_name.png";
+        conf->text="default";
+        //conf->size=72;
+       //то это всегда путь к проге, а значит и остальных аргументов нет
+	}
+	if(argc==2)
+	{
+        //пришёл хотя бы один аргумент,надо выяснить какой
+        //проверяем пришёл ли файл со шрифтом
+        if(strstr(argv[1],".ttf"))
+        {
+
+            conf->font_file=argv[1];
+            conf->name_png="default.png";
+            conf->text="default";
+        }
+        else
+        {
+            if(strstr(argv[1],".png"))
+            {
+                conf->name_png=argv[1];
+
+
+
+		char buf[500]="\0";
+       	 	int k=0;
+        	for(k=0;k<files.rows;k++)
+        	{
+            		if(strstr(files.list_of_files[k],".ttf"))
+            		{
+                	//strcat(buf,"../");
+                	strcat(buf,files.list_of_files[k]);
+            		}
+        	}
+        	conf->font_file=(char*)calloc(strlen(buf)+1,sizeof(char));
+        	memcpy(conf->font_file,buf,(strlen(buf)+1)*sizeof(char));
+
+
+
+                //conf->font_file="../*.ttf";
+                conf->text="default";
+            }
+            else
+            {
+
+		char buf[500]="\0";
+       	 	int k=0;
+        	for(k=0;k<files.rows;k++)
+        	{
+            		if(strstr(files.list_of_files[k],".ttf"))
+            		{
+                	//strcat(buf,"../");
+                	strcat(buf,files.list_of_files[k]);
+            		}
+        	}
+		conf->font_file=(char*)calloc(strlen(buf)+1,sizeof(char));
+        	memcpy(conf->font_file,buf,(strlen(buf)+1)*sizeof(char));
+
+                //conf->font_file="../*.ttf";
+
+		conf->name_png=(char*)calloc(strlen(argv[1])+1,sizeof(char));
+		memcpy(conf->name_png,argv[1],(strlen(argv[1])+1)*sizeof(char));
+                //conf->name_png=argv[1];
+		conf->name_png=(char*)realloc(conf->name_png,(strlen(conf->name_png)+strlen(".png")+1)*sizeof(char));
+                strcat(conf->name_png,".png");
+                conf->text=argv[1];
+            }
+        }
+    }
+    if(argc==3)
+    {
+        if  (  (strstr(argv[1],".ttf") && strstr(argv[2],".png")) )
+        {
+            conf->font_file=argv[1];
+            conf->name_png=argv[2];
+            conf->text="default";
+        }
+        if((strstr(argv[1],".png") && strstr(argv[2],".ttf")))
+        {
+            conf->font_file=argv[2];
+            conf->name_png=argv[1];
+            conf->text="default";
+        }
+        if( strstr(argv[1],".ttf") && ( !strstr(argv[2],".png") && !strstr(argv[2],".ttf")))
+        {
+            conf->font_file=argv[1];
+            conf->text=argv[2];
+
+            //strcat(argv[2],".png");
+            conf->name_png=argv[2];
+            strcat(argv[2],".png");
+        }
+        if( strstr(argv[1],".png") && (!strstr(argv[2],".ttf") && !strstr(argv[2],".png")) )
+        {
+
+		char buf[500]="\0";
+       	 	int k=0;
+        	for(k=0;k<files.rows;k++)
+        	{
+            		if(strstr(files.list_of_files[k],".ttf"))
+            		{
+                	//strcat(buf,"../");
+                	strcat(buf,files.list_of_files[k]);
+            		}
+        	}
+		conf->font_file=(char*)calloc(strlen(buf)+1,sizeof(char));
+        	memcpy(conf->font_file,buf,(strlen(buf)+1)*sizeof(char));
+
+
+            //conf->font_file="../*.ttf";
+
+            conf->name_png=argv[1];
+            conf->text="default";
+        }
+    }
+    if(argc==4)
+    {
+        if(strstr(argv[1],".ttf") && strstr(argv[2],".png") && (!strstr(argv[3],".png") && !strstr(argv[3],".ttf")) )
+        {
+            conf->font_file=argv[1];
+            conf->name_png=argv[2];
+            conf->text=argv[3];
+        }
+        if(strstr(argv[1],".ttf") &&  ( !strstr(argv[2],".png") && !strstr(argv[2],".ttf") ) &&  (strstr(argv[3],".png"))      )
+        {
+            conf->font_file=argv[1];
+            conf->name_png=argv[3];
+            conf->text=argv[2];
+
+        }
+        if(  (!strstr(argv[1],".png") && !strstr(argv[1],".ttf"))  &&  strstr(argv[2],".ttf") && strstr(argv[3],".png")     )
+        {
+            conf->font_file=argv[2];
+            conf->name_png=argv[3];
+            conf->text=argv[1];
+        }
+        //if(strstr(argv[1],".png")&&strstr(argv[2],".ttf")&&(!strstr(argv[3],".png") && !strstr(argv[3],".ttf")))
+        if(strstr(argv[1],".png")&&(strstr(argv[2],".ttf")) && (!strstr(argv[3],".png") && !strstr(argv[3],".ttf")) )
+        {
+            conf->font_file=argv[2];
+            conf->name_png=argv[1];
+            conf->text=argv[3];
+        }
+        if(  strstr(argv[1],".png")  && (!strstr(argv[2],".png") && !strstr(argv[2],".ttf") ) && strstr(argv[3],".ttf"))
+        {
+            conf->font_file=argv[3];
+            conf->name_png=argv[1];
+            conf->text=argv[2];
+        }
+
+        if(   (!strstr(argv[1],".png") && !strstr(argv[1],".ttf"))  && strstr(argv[2],".png") && strstr(argv[3],".ttf")   )
+        {
+            conf->font_file=argv[3];
+            conf->name_png=argv[2];
+            conf->text=argv[1];
+        }
+
+
+    }
+
+	//conf->font_file = argv[1];
+	//conf->name_png=argv[2];
+	//conf->text = argv[3];
+
+		conf->size = 72;//atoi(argv[3]);
+
+	//if (argc > 4)
+	//{
+		conf->anti_alias = 1;
+	//}
+
+
+
+
+	for ( int i = 0; i < HEIGHT; i++ )
+	{
+		for ( int j = 0; j < WIDTH; j++ )
+		{
+			image[i][j] = 0;
+		}
+	}
+
+	return NULL;
+}
+void init_libs()
+{
+	hzlib = dlopen("libz.so", RTLD_NOW | RTLD_GLOBAL);
+	if(!hzlib)
+	{
+		printf("[FAIL-hzlib] %s\n\t\n", dlerror());
+	}
+	else
+	{
+		//printf("[*] zlib.so is loaded\n");
+	}
+
+
+	hfreetype = dlopen("libfreetype.so", RTLD_NOW | RTLD_GLOBAL);
+	if(!hfreetype)
+	{
+		printf("[FAIL-hfreetype] %s\n\t\n", dlerror());
+	}
+	else
+	{
+		//printf("[*] freetype.so is loaded\n");
+	}
+	hlibpng = dlopen("libpng.so", RTLD_LAZY);
+	//hlibpng = dlopen(argv[6], RTLD_NOW || RTLD_GLOBAL);
+	//hlibpng = dlopen(argv[6], RTLD_NOW | RTLD_GLOBAL);
+	if(!hlibpng)
+	{
+		printf("[FAIL-hlibpng] %s\n", dlerror());
+	}
+	else
+	{
+		//printf("[*] libpng.so is loaded\n");
+	}
+}
+
+char* render_glyph(FT_Face* face, conf_t conf)
+{
+	FT_Library ft;
+	FT_Error err;
+	char* error;
+
+	FT_Error (*FT_Init_FreeType)(FT_Library*);
+	FT_Init_FreeType = dlsym(hfreetype, "FT_Init_FreeType");
+	error = dlerror();
+	if(error != NULL)
+	{
+		printf("[!] %s\n", error);
+		return error;
+	}
+	else
+	{
+		//printf("[*] FT_Init_FreeType\n");
+	}
+	err = FT_Init_FreeType(&ft);
+	if (err) return "freetype init error";
+
+
+	FT_Error (*FT_New_Face)(FT_Library, const char*, FT_Long, FT_Face*);
+	FT_New_Face = dlsym(hfreetype, "FT_New_Face");
+	error = dlerror();
+	if(error != NULL)
+	{
+		printf("[!] %s\n", error);
+		return error;
+	}
+	else
+	{
+		//printf("[*] FT_New_Face\n");
+	}
+
+	err = FT_New_Face(ft, conf.font_file, 0, face);
+	if (err == FT_Err_Unknown_File_Format)
+		return "unknown font file format";
+	else if (err)
+		return "error reading font file";
+
+	FT_Error (*FT_Set_Pixel_Sizes)(FT_Face, FT_UInt, FT_UInt);
+	FT_Set_Pixel_Sizes = dlsym(hfreetype, "FT_Set_Pixel_Sizes");
+	error = dlerror();
+	if(error != NULL)
+	{
+		printf("[!] %s\n", error);
+		return error;
+	}
+	else
+	{
+		//printf("[*] FT_Set_Pixel_Sizes\n");
+	}
+	err = FT_Set_Pixel_Sizes(*face, 0, conf.size);
+	if (err) return "error setting font size";
+
+	int target_height;
+	target_height = HEIGHT;
+	FT_Vector     pen;
+	FT_GlyphSlot  slot;
+	slot = (*face)->glyph;
+	pen.x = 300 * 64;
+	pen.y = ( target_height - 200 ) * 64;
+	int wid = 0;
+
+	FT_UInt (*FT_Get_Char_Index)(FT_Face, FT_ULong);
+	FT_Get_Char_Index = dlsym(hfreetype, "FT_Get_Char_Index");
+	error = dlerror();
+	if(error != NULL)
+	{
+		printf("[!] %s\n", error);
+		return error;
+	}
+	else
+	{
+		//printf("[*] FT_Get_Char_Index\n");
+	}
+
+	FT_Error (*FT_Load_Glyph)(FT_Face, FT_UInt, FT_Int32);
+	FT_Load_Glyph = dlsym(hfreetype, "FT_Load_Glyph");
+	error = dlerror();
+	if(error != NULL)
+	{
+		printf("[!] %s\n", error);
+		return error;
+	}
+	else
+	{
+		//printf("[*] FT_Load_Glyph\n");
+	}
+
+	FT_Error (*FT_Render_Glyph)(FT_GlyphSlot, FT_Render_Mode);
+	FT_Render_Glyph = dlsym(hfreetype, "FT_Render_Glyph");
+	error = dlerror();
+	if(error != NULL)
+	{
+		printf("[!] %s\n", error);
+		return error;
+	}
+	else
+	{
+		//printf("[*] FT_Render_Glyph\n");
+	}
+	for (int i = 0; i < strlen(conf.text); ++i)
+	{
+		FT_UInt index = FT_Get_Char_Index(*face, conf.text[i]);
+		//printf("FT_UInt index = %u\n", index);
+		if (index == 0) return "no glyph found for char";
+		err = FT_Load_Glyph(*face, index, FT_LOAD_DEFAULT);
+		if (err) return "error loading glyph";
+		err = FT_Render_Glyph((*face)->glyph, conf.anti_alias ?
+		                      FT_RENDER_MODE_NORMAL :
+		                      FT_RENDER_MODE_MONO);
+		if (err) return "error rendering glyph";
+		//draw_bitmap((*face)->glyph->bitmap);
+	    //draw_bitmap( &slot->bitmap, slot->bitmap_left, target_height - slot->bitmap_top );
+	    draw_bitmap( &slot->bitmap,
+	    	slot->bitmap_left + wid,
+	    	target_height - slot->bitmap_top - 44);
+	    wid += slot->bitmap.width;
+	    pen.x += slot->advance.x;
+	    pen.y += slot->advance.y;
+	}
+
+
+	return NULL;
+}
+
+char* cool_render_png(char* out, int aa)
+{
+	char* error;
+
+	FILE* f = fopen(out, "wb");
+	if (!f)
+		return "failed to open output file";
+
+	png_structp (*png_create_write_struct)(png_const_charp, png_voidp, png_error_ptr, png_error_ptr);
+	png_create_write_struct = dlsym(hlibpng, "png_create_write_struct");
+	error = dlerror();
+	if(error != NULL)
+	{
+		printf("[!] %s\n", error);
+		return error;
+	}
+	else
+	{
+		//printf("[*] png_create_write_struct\n");
+	}
+
+	png_structp png_out = png_create_write_struct(
+	                          PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
+	if (!png_out)
+		return "failed to create png write struct";
+
+	png_infop (*png_create_info_struct)(png_structp);
+	png_create_info_struct = dlsym(hlibpng, "png_create_info_struct");
+	error = dlerror();
+	if(error != NULL)
+	{
+		printf("[!] %s\n", error);
+		return error;
+	}
+	else
+	{
+		//printf("[*] png_create_info_struct\n");
+	}
+	png_infop png_info = png_create_info_struct(png_out);
+	if (!png_info)
+		return "failed to create png info struct";
+		//printf("init_begin\n");
+	//
+	jmp_buf* (*png_jmpbuf)(png_structp, png_longjmp_ptr, size_t);
+	png_jmpbuf = dlsym(hlibpng, "png_jmpbuf");
+	if(error != NULL)
+	{
+		printf("[!] %s\n", error);
+		return error;
+	}
+	else
+	{
+		//printf("[*] png_jmpbuf\n");
+	}
+	jmp_buf* (*png_set_longjmp_fn)(png_structp, png_longjmp_ptr, size_t);
+	png_set_longjmp_fn = dlsym(hlibpng, "png_set_longjmp_fn");
+	if(error != NULL)
+	{
+		printf("[!] %s\n", error);
+		return error;
+	}
+	else
+	{
+		//printf("[*] png_set_longjmp_fn\n");
+	}
+	if (setjmp(png_jmpbuf(png_out)))
+		return "png init io error";
+
+	void (*png_init_io)(png_structp, png_FILE_p);
+	png_init_io = dlsym(hlibpng, "png_init_io");
+	if(error != NULL)
+	{
+		printf("[!] %s\n", error);
+		return error;
+	}
+	else
+	{
+		//printf("[*] png_init_io\n");
+	}
+	png_init_io(png_out, f);
+
+	if (setjmp(png_jmpbuf(png_out)))
+		return "IHDR write error";
+		//printf("png_property\n");
+	//
+
+	void (*png_set_IHDR)(png_structp, png_infop, png_uint_32, png_uint_32, int, int, int, int, int);
+	png_set_IHDR = dlsym(hlibpng, "png_set_IHDR");
+	if(error != NULL)
+	{
+		printf("[!] %s\n", error);
+		return error;
+	}
+	else
+	{
+		//printf("[*] png_set_IHDR\n");
+	}
+	png_set_IHDR(png_out,
+	             png_info,
+	             WIDTH,
+	             HEIGHT,
+	             aa ? 8 : 1,
+	             PNG_COLOR_TYPE_GRAY,
+	             PNG_INTERLACE_NONE,
+	             PNG_COMPRESSION_TYPE_DEFAULT,
+	             PNG_FILTER_TYPE_DEFAULT);
+
+	void (*png_write_info)(png_structp, png_infop);
+	png_write_info = dlsym(hlibpng, "png_write_info");
+	if(error != NULL)
+	{
+		printf("[!] %s\n", error);
+		return error;
+	}
+	else
+	{
+		//printf("[*] png_write_info\n");
+	}
+
+//ZEXTERN uLong ZEXPORT crc32   OF((uLong crc, const Bytef *buf, uInt len));
+	/*uLong (*crc32)(uLong, const Bytef*, uInt);
+	crc32 = dlsym(hlibpng, "crc32");
+	if(error != NULL)
+	{
+		printf("[!] %s\n", error);
+		return error;
+	}
+	else
+	{
+		//printf("[*] crc32\n");
+	}*/
+
+	png_write_info(png_out, png_info);
+		//printf("another_png_property\n");
+	//
+	if (setjmp(png_jmpbuf(png_out)))
+		return "png write error";
+
+	int i;
+	void (*png_write_row)(png_structp, png_const_bytep);
+	png_write_row = dlsym(hlibpng, "png_write_row");
+	if(error != NULL)
+	{
+		printf("[!] %s\n", error);
+		return error;
+	}
+	else
+	{
+		//printf("[*] png_write_row\n");
+	}
+	for (i = 0; i < HEIGHT; ++i)
+	{
+		//printf("\ti - %i\n",i);
+		const unsigned char* rowptr = image[i];
+		png_write_row(png_out, rowptr);
+	}
+		//printf("write\n");
+
+	if (setjmp(png_jmpbuf(png_out)))
+	{
+		//printf("setjmp_error\n");
+		return "png end error";
+	}
+		//printf("setjmp\n");
+	void (*png_write_end)(png_structp, png_infop);
+	png_write_end = dlsym(hlibpng, "png_write_end");
+	if(error != NULL)
+	{
+		printf("[!] %s\n", error);
+		return error;
+	}
+	else
+	{
+		//printf("[*] png_write_end\n");
+	}
+	png_write_end(png_out, NULL);
+		//printf("png_write_end\n");
+
+	fclose(f);
+	return NULL;
+}
+
+
+
+int main(int argc, char** argv)
+{
+    clock_t begin=clock();
+	conf_t conf;
+	char* conf_err = parse_args(argc, argv, &conf);
+	init_libs();
+	clock_t end=clock();
+	double res=(double)(end-begin);
+    printf("%f\n",(res)/CLOCKS_PER_SEC);
+    clock_t begin1=clock();
+    begin1+=res;
+	FT_Face face;
+
+
+	char* ft_err = render_glyph(&face, conf);
+	if (ft_err != NULL)
+	{
+		printf("freetype error: %s\n", ft_err);
+		return 2;
+	}
+
+	/*printf("bitmap rows: %d, width: %d\n",
+	       face->glyph->bitmap.rows,
+	       face->glyph->bitmap.width);*/
+
+	//char* png_err = render_png(face, "a.png", conf.anti_alias);
+	char* png_err = cool_render_png(conf.name_png, conf.anti_alias);
+		//printf("cool_render_png\n");
+
+
+	if (png_err != NULL)
+	{
+		printf("png error: %s\n", png_err);
+		return 3;
+	}
+
+	clock_t end1=clock();
+	printf("%f\n",(double)(end1-begin1)/CLOCKS_PER_SEC);
+	return 0;
+}
+
